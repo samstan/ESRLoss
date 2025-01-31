@@ -60,9 +60,9 @@ def parse_articles(line):
 filename_prefix = 'data/2009050{date}_{idx}.txt' #change for day 10
 
 filenames = [filename_prefix.format(date = DAY, idx = i) for i in range(NUM_EXPS)]
-# filenames = ['data/20090501_19.txt']
-# vals_our = np.zeros(NUM_EXPS)
-# vals_s = np.zeros(NUM_EXPS)
+
+vals_our = np.zeros(NUM_EXPS)
+vals_s = np.zeros(NUM_EXPS)
 vals_i = np.zeros(NUM_EXPS)
 vals_b1 = np.zeros(NUM_EXPS)
 vals_b2 = np.zeros(NUM_EXPS)
@@ -75,8 +75,6 @@ vals_p3 = np.zeros(NUM_EXPS)
 vals_p4 = np.zeros(NUM_EXPS)
 
 for enum,filename in enumerate(tqdm(filenames)):
-
-    # try:
 
     df_dict = {'Article': [], 'Clicked': [], 'Feat 1': [], 'Feat 2': [], 'Feat 3': [], 'Feat 4': [], 'Feat 5': []}
 
@@ -134,8 +132,8 @@ for enum,filename in enumerate(tqdm(filenames)):
 
     df_tests_all = pd.concat(df_tests_all, ignore_index = True)
 
-    # vals_our[enum] = reg_learner(X_train, treats_train, y_train, df_test, df_tests_all, k = K, schedule_k = 'increase')
-    # vals_s[enum] = s_learner(X_train, treats_train, y_train, df_test, df_tests_all)
+    vals_our[enum] = reg_learner(X_train, treats_train, y_train, df_test, df_tests_all, k = K, schedule_k = 'increase')
+    vals_s[enum] = s_learner(X_train, treats_train, y_train, df_test, df_tests_all)
     vals_i[enum] = bandit_net(X_train, treats_train, y_train, df_test, 0)
     vals_b1[enum] = bandit_net(X_train, treats_train, y_train, df_test, 0.65)
     vals_b2[enum] = bandit_net(X_train, treats_train, y_train, df_test, 0.75)
@@ -146,17 +144,23 @@ for enum,filename in enumerate(tqdm(filenames)):
     vals_p2[enum] = pseudo_loss(X_train, treats_train, y_train, df_test, 1e-2)
     vals_p3[enum] = pseudo_loss(X_train, treats_train, y_train, df_test, 1e-1)
     vals_p4[enum] = pseudo_loss(X_train, treats_train, y_train, df_test, 1)
+    # For supplement
+    # vals_ls[enum] = log_smooth(X_train, treats_train, y_train, df_test, 1/np.sqrt(len(y_train)))
+    # vals_lse[enum] = log_sum_exp(X_train, treats_train, y_train, df_test, 1/np.sqrt(len(y_train)))
+    # vals_dr_0[enum] = dr_shrink(X_train, treats_train, y_train, df_test, 0)
+    # vals_dr_01[enum] = dr_shrink(X_train, treats_train, y_train, df_test, 0.1)
+    # vals_dr_1[enum] = dr_shrink(X_train, treats_train, y_train, df_test, 1)
+    # vals_dr_10[enum] = dr_shrink(X_train, treats_train, y_train, df_test, 10)
+    # vals_dr_100[enum] = dr_shrink(X_train, treats_train, y_train, df_test, 100)
+    # vals_dr_1000[enum] = dr_shrink(X_train, treats_train, y_train, df_test, 1000)
+    # vals_dr_inf[enum] = dr_shrink(X_train, treats_train, y_train, df_test, torch.inf)
 
-    # except Exception as error:
-        # print('File failed: ', filename)
-        # print('An exception occurred: ', error)
-
-results_dict = {'Filename': [], 'Val_IPW': [], 'Val_Bandit_65': [], 'Val_Bandit_75': [], 'Val_Bandit_85': [], 'Val_Bandit_95': [], 'Val_Bandit_105': [], 'Val_PL_e3': [], 'Val_PL_e2': [], 'Val_PL_e1': [], 'Val_PL_e0': []}
+results_dict = {'Filename': [], 'Val_Our': [], 'Val_S': [] 'Val_IPW': [], 'Val_Bandit_65': [], 'Val_Bandit_75': [], 'Val_Bandit_85': [], 'Val_Bandit_95': [], 'Val_Bandit_105': [], 'Val_PL_e3': [], 'Val_PL_e2': [], 'Val_PL_e1': [], 'Val_PL_e0': []}
 
 for i in range(len(filenames)):
     results_dict['Filename'].append(filenames[i])
-    # results_dict['Val_Our'].append(vals_our[i])
-    # results_dict['Val_S'].append(vals_s[i])
+    results_dict['Val_Our'].append(vals_our[i])
+    results_dict['Val_S'].append(vals_s[i])
     results_dict['Val_IPW'].append(vals_i[i])
     results_dict['Val_Bandit_65'].append(vals_b1[i])
     results_dict['Val_Bandit_75'].append(vals_b2[i])
@@ -170,4 +174,4 @@ for i in range(len(filenames)):
 
 df_results = pd.DataFrame(results_dict)
 
-df_results.to_csv('day{date}_{k}_many1.csv'.format(date = DAY, k = K), index = False)
+df_results.to_csv('day{date}.csv'.format(date = DAY, k = K), index = False)

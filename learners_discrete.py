@@ -14,36 +14,31 @@ torch.set_default_dtype(torch.float64)
 torch.manual_seed(0)
 device = torch.device('cpu')
 
-EPOCHS = 100 #epochs 100 good
+EPOCHS = 100
 
 class Net(torch.nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.lin = torch.nn.Linear(dim,dim//2)
-        # self.lin2 = torch.nn.Linear(dim,dim)
         self.lin3 = torch.nn.Linear(dim//2,1)
 
     def forward(self, data):
         out = F.relu(self.lin(data))
-        # out = F.relu(self.lin2(out))
         out = self.lin3(out)
-        return out.view(-1) #+ out_f.view(-1)
+        return out.view(-1)
 
 class ClassNet(torch.nn.Module):
     def __init__(self, dim, num_actions):
         super().__init__()
         self.lin = torch.nn.Linear(dim,dim//2)
         self.lin3 = torch.nn.Linear(dim//2,num_actions)
-        # self.bn = torch.nn.BatchNorm1d(num_actions)
         self.softmax = torch.nn.Softmax(1)
 
     def forward(self, data):
         out = F.relu(self.lin(data))
-        # out = F.relu(self.lin2(out))
         out = self.lin3(out)
-        # out = self.softmax(self.bn(out))
         out = self.softmax(out)
-        return out #+ out_f.view(-1)
+        return out
 
 def our_loss(y_hat, y_true, closest, k):
     return torch.mean(torch.max(y_true[closest.long()],dim = 1)[0] - torch.sum(y_true[closest.long()] * F.softmax(k*y_hat[closest.long()], dim = 1), dim = 1))
@@ -59,13 +54,33 @@ def pl_loss(output, action, delta, prop, base_policy, beta):
     to_add = beta * torch.sum(torch.div(output, base_policy)) / output.shape[0]
     return torch.mean(loss) + to_add
 
+def ls_loss(output, action, delta, prop, lamb):
+    risk = -1.0 * delta #costs are assumed negative
+    loss = risk * (output[np.indices(action.shape)[0], action.long()]) / prop
+    loss = torch.log( 1 - lamb * loss)/lamb
+    return -1.0 * torch.mean(loss)
+
+def lse_loss(output, action, delta, prop, lamb):
+    risk = 1.0 - delta
+    loss = risk * (output[np.indices(action.shape)[0], action.long()]) / prop
+    loss = torch.exp(lamb * loss)
+    return torch.log(torch.mean(loss))/lamb
+
+def dr_shrink_loss(output, action, delta, prop, eta, lamb):
+    risk = 1.0 - delta
+    loss = torch.sum(torch.mul(output, eta))
+    corr = risk - eta[np.indices(action.shape)[0], action.long()]
+    w = (output[np.indices(action.shape)[0], action.long()]) / prop
+    if lamb < torch.inf:
+        loss += torch.sum(torch.mul(corr, torch.mul(w, lamb/(w**2 + lamb))))
+    else:
+        loss += torch.sum(torch.mul(corr, w))
+    return loss/output.shape[0]
+
 def calc_pairs(X_feat, treats):
     dist_matrix = torch.cdist(X_feat, X_feat)
     closest = -1 * torch.ones((X_feat.shape[0], 20), dtype = torch.int32)
     for i in range(X_feat.shape[0]):
-        # for j in range(X_feat.shape[0]):
-        #     if treats[i] == treats[j]:
-        #         dist_matrix[i,j] = torch.inf
         for j in range(20):
             idxs = torch.where(treats == j)
             dists = dist_matrix[i][idxs]
@@ -76,9 +91,6 @@ def calc_pairs(X_feat, treats):
 def calc_pairs_ind(X_feat, treats):
     closest = -1 * torch.ones((X_feat.shape[0], 20), dtype = torch.int32)
     for i in range(X_feat.shape[0]):
-        # for j in range(X_feat.shape[0]):
-        #     if treats[i] == treats[j]:
-        #         dist_matrix[i,j] = torch.inf
         dists_from_i = torch.cdist(X_feat[i].unsqueeze(0), X_feat)[0]
         for j in range(20):
             idxs = torch.where(treats == j)
@@ -98,7 +110,7 @@ def calc_pairs_approx(X_feat, treats):
         idxs.append(idx)
         Xi = X_feat[idx]
         Xs.append(Xi)
-        nbr = NearestNeighbors(n_neighbors = 1, algorithm = 'ball_tree').fit(Xi)
+        nbr = NearestNeighbors(n_neighbors = 1, algorithm = 'kd_tree').fit(Xi)
         nbrs.append(nbr)
     for i in range(len(unique_treats)):
         _, idxs = nbrs[i].kneighbors(X_feat)
@@ -107,10 +119,6 @@ def calc_pairs_approx(X_feat, treats):
 
 def weighted_mse_loss(input, target, weight):
     return (weight * (input - target) ** 2).sum() / weight.sum()
-
-
-
-#later, gradient boosting, or maybe lgb? or linear regression
 
 def reg_learner(xs_train, treats_train, outcomes_train, df_test, df_test_all, k = 5, schedule_k = 'constant'):
     n_train = len(outcomes_train)
@@ -130,10 +138,7 @@ def reg_learner(xs_train, treats_train, outcomes_train, df_test, df_test_all, k 
     train_loss = np.zeros(EPOCHS)
     train_reg = np.zeros(EPOCHS)
 
-    # if len(xs_train)>50000:
     closest = calc_pairs_approx(X[:,:-1], X[:,-1])
-    # else:
-    #     closest = calc_pairs(X[:,:-1], X[:,-1])
 
     if schedule_k != 'constant':
         ks = k + np.arange(EPOCHS)
@@ -147,7 +152,6 @@ def reg_learner(xs_train, treats_train, outcomes_train, df_test, df_test_all, k 
         y = y.to(device)
         optimizer.zero_grad()
         loss = our_loss(model(X), y, closest, k)
-        # print(loss)
         loss.backward()
         loss_all += loss.item()
         optimizer.step()
@@ -213,7 +217,6 @@ def s_learner(xs_train, treats_train, outcomes_train, df_test, df_test_all):
         
     
     return off_policy_eval(df_test, df_test_all)
-    # return mean_squared_error(CATEs, cates_test)
 
 def bandit_net(xs_train, treats_train, outcomes_train, df_test, lamb = 0.9):
     n_train = len(outcomes_train)
@@ -291,4 +294,160 @@ def pseudo_loss(xs_train, treats_train, outcomes_train, df_test, beta = 1e-3):
         policy = treats_pred[np.indices(treats_test.shape)[0], treats_test.long()]
         return torch.mean(torch.mul(policy,y_test)*num_actions)
         
+    return off_policy_eval(df_test)
+
+def log_smooth(xs_train, treats_train, outcomes_train, df_test, lamb = 1):
+    n_train = len(outcomes_train)
+    num_actions = len(treats_train.unique())
+    model = ClassNet(5, num_actions).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    X = torch.tensor(xs_train)
+    y = torch.tensor(outcomes_train)
+    treats = torch.tensor(treats_train)
+    props = 1/num_actions * torch.ones_like(treats_train)
+
+    def train(X,y, treats, props):
+        model.train()
+        loss_all = 0
+        X = X.to(device)
+        y = y.to(device)
+        optimizer.zero_grad()
+        loss = ls_loss(model(X), treats, y, props, lamb)
+        loss.backward()
+        loss_all += loss.item()
+        optimizer.step()
+        return loss_all
+
+    train_loss = np.zeros(EPOCHS)
+
+    for epoch in tqdm(range(EPOCHS)):
+        train_loss[epoch] = train(X, y, treats, props)
+
+    def off_policy_eval(df_test):
+        X_test = df_test.drop(['Clicked', 'Treat'], axis = 1)
+        treats_pred = model(torch.tensor(X_test.values))
+        treats_test = torch.tensor(df_test.Treat.astype(np.int32).values)
+        y_test = torch.tensor(df_test.Clicked.astype(np.int32).values)
+        policy = treats_pred[np.indices(treats_test.shape)[0], treats_test.long()]
+        return torch.mean(torch.mul(policy,y_test)*num_actions)
+        
+    return off_policy_eval(df_test)
+
+def log_sum_exp(xs_train, treats_train, outcomes_train, df_test, lamb = 1):
+    n_train = len(outcomes_train)
+    num_actions = len(treats_train.unique())
+    model = ClassNet(5, num_actions).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    X = torch.tensor(xs_train)
+    y = torch.tensor(outcomes_train)
+    treats = torch.tensor(treats_train)
+    props = 1/num_actions * torch.ones_like(treats_train)
+
+    def train(X,y, treats, props):
+        model.train()
+        loss_all = 0
+        X = X.to(device)
+        y = y.to(device)
+        optimizer.zero_grad()
+        loss = lse_loss(model(X), treats, y, props, lamb)
+        loss.backward()
+        loss_all += loss.item()
+        optimizer.step()
+        return loss_all
+
+    train_loss = np.zeros(EPOCHS)
+
+    for epoch in tqdm(range(EPOCHS)):
+        train_loss[epoch] = train(X, y, treats, props)
+
+    def off_policy_eval(df_test):
+        X_test = df_test.drop(['Clicked', 'Treat'], axis = 1)
+        treats_pred = model(torch.tensor(X_test.values))
+        treats_test = torch.tensor(df_test.Treat.astype(np.int32).values)
+        y_test = torch.tensor(df_test.Clicked.astype(np.int32).values)
+        policy = treats_pred[np.indices(treats_test.shape)[0], treats_test.long()]
+        return torch.mean(torch.mul(policy,y_test)*num_actions)
+        
+    return off_policy_eval(df_test)
+
+def dr_shrink(xs_train, treats_train, outcomes_train, df_test, lamb=1):
+
+    n_train = len(outcomes_train)
+    num_actions = len(treats_train.unique())
+    if len(np.shape(xs_train))==1:
+        X = np.concatenate((np.expand_dims(xs_train, axis = 1), np.expand_dims(treats_train, axis = 1)), axis = 1)
+    else:
+        X = np.concatenate((xs_train, np.expand_dims(treats_train, axis = 1)), axis = 1)
+    y = outcomes_train
+
+    X = torch.tensor(X)
+    y = torch.tensor(y)
+    model_reward = Net(6).to(device)
+    optimizer_reward = torch.optim.Adam(model_reward.parameters(), lr=0.1)
+
+
+
+    def train_reward(X,y):
+        model_reward.train()
+        loss_all = 0
+        X = X.to(device)
+        y = y.to(device)
+        optimizer_reward.zero_grad()
+        loss_reward = F.mse_loss(model_reward(X), y)
+        loss_reward.backward()
+        loss_all += loss_reward.item()
+        optimizer_reward.step()
+        return loss_all
+
+    train_loss_reward = np.zeros(EPOCHS)
+
+    for epoch in range(EPOCHS):
+        train_loss_reward[epoch] = train_reward(X, y)
+
+    eta = torch.zeros((n_train, num_actions))
+
+    for i in range(num_actions):
+        treats_tmp = i*torch.ones(n_train)
+        if len(np.shape(xs_train))==1:
+            X_tmp = np.concatenate((np.expand_dims(xs_train, axis = 1), np.expand_dims(treats_tmp, axis = 1)), axis = 1)
+        else:
+            X_tmp = np.concatenate((xs_train, np.expand_dims(treats_tmp, axis = 1)), axis = 1)
+        eta[:,i] = model_reward(torch.tensor(X_tmp).to(device))
+
+    n_train = len(outcomes_train)
+
+    X = torch.tensor(xs_train)
+
+    model_policy = ClassNet(5, num_actions).to(device)
+    optimizer_policy = torch.optim.Adam(model_policy.parameters(), lr=1e-3)
+    treats = torch.tensor(treats_train)
+    props = 1/num_actions * torch.ones_like(treats_train)
+
+    def train_policy(X,y, treats, props):
+        model_policy.train()
+        loss_all = 0
+        X = X.to(device)
+        y = y.to(device)
+        optimizer_policy.zero_grad()
+        loss = dr_shrink_loss(model_policy(X), treats, y, props, eta.detach(), lamb)
+        loss.backward()
+        loss_all += loss.item()
+        optimizer_policy.step()
+        return loss_all
+
+    train_loss_policy = np.zeros(EPOCHS)
+
+    for epoch in tqdm(range(EPOCHS)):
+        train_loss_policy[epoch] = train_policy(X, y, treats, props)
+
+    def off_policy_eval(df_test):
+        X_test = df_test.drop(['Clicked', 'Treat'], axis = 1)
+        treats_pred = model_policy(torch.tensor(X_test.values))
+        treats_test = torch.tensor(df_test.Treat.astype(np.int32).values)
+        y_test = torch.tensor(df_test.Clicked.astype(np.int32).values)
+        policy = treats_pred[np.indices(treats_test.shape)[0], treats_test.long()]
+        return torch.mean(torch.mul(policy,y_test)*num_actions)
+
     return off_policy_eval(df_test)

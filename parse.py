@@ -2,7 +2,7 @@ import pandas as pd
 import subprocess
 from tqdm import tqdm
 
-days = list(range(2,5)) #already did 1 manually
+days = list(range(1,11))
 
 for day in days:
     print('Starting day: May ', day)
@@ -44,15 +44,6 @@ for day in days:
     assert(counter == length)
 
     subprocess.run('rm {file}'.format(file = filename), shell = True)
-# pool_set = set()
-
-# for key in pool_dict:
-#     articles = [s[:6] for s in key.split('|')]
-#     art_tup = tuple(sorted(articles))
-#     if art_tup not in pool_set:
-#         pool_set.add(art_tup)
-#     else:
-#         print('WARNING')
 
 
 
