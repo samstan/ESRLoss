@@ -113,9 +113,17 @@ def reg_learner(xs_train, treats_train, outcomes_train, xs_test, ctrl_test, trt_
         treated = model(torch.tensor(np.concatenate((X_test[i], np.array([1]))))).detach().numpy()
         control = model(torch.tensor(np.concatenate((X_test[i], np.array([0]))))).detach().numpy()
 
-        decision = np.argmax([control,treated])
+        probs_trt = np.exp(k*treated)[0]
+        probs_ctr = np.exp(k*control)[0]
+
+        decision = np.random.binomial(1, probs_trt/(probs_trt+probs_ctr))
+
+        # print(probs_trt, probs_ctr, decision)
+
+        # decision = np.argmax([control,treated])
         opts = [ctrl_test[i],trt_test[i]]
         reg += np.max(opts) - opts[decision]
+        
         
     
     return train_loss, reg/n_test
