@@ -9,12 +9,13 @@ import numpy as np
 import torch
 import os
 import glob
+import argparse
 from sklearn.metrics import mean_squared_error
 from learners_reg import Net
 
 device = 'cpu'
 
-def analyze_model_performance(model_save_dir="model_weights"):
+def analyze_model_performance(model_save_dir="model_weights", csv=False):
     """Analyze performance of saved models."""
     
     if not os.path.exists(model_save_dir):
@@ -33,7 +34,8 @@ def analyze_model_performance(model_save_dir="model_weights"):
         ctrl_train = data['ctrl_train']
         trt_train = data['trt_train']
 
-        print("✓ Loaded data from 'generated_data.npz'")
+        if not csv:
+            print("✓ Loaded data from 'generated_data.npz'")
     except FileNotFoundError:
         print("✗ 'generated_data.npz' not found. Please run data generation first.")
         return
@@ -45,14 +47,21 @@ def analyze_model_performance(model_save_dir="model_weights"):
         print(f"✗ No model files found in '{model_save_dir}'!")
         return
     
-    print(f"✓ Found {len(model_files)} model files")
-    print("=" * 80)
+    if not csv:
+        print(f"✓ Found {len(model_files)} model files")
+        print("=" * 80)
+
+    if csv:
+        # header
+        print("epoch,train_loss,train_regret,test_regret,train_mse")
+
     
     # Analyze each model
     for model_file in sorted(model_files):
         filename = os.path.basename(model_file)
-        print(f"\nAnalyzing: {filename}")
-        print("-" * 50)
+        if not csv:
+            print(f"\nAnalyzing: {filename}")
+            print("-" * 50)
         
         if True:
             # Load checkpoint
@@ -64,10 +73,11 @@ def analyze_model_performance(model_save_dir="model_weights"):
             train_loss = checkpoint.get('train_loss', 0)
             k_param = checkpoint.get('k', 'N/A')
             
-            print(f"Epoch: {epoch}")
-            print(f"Num Training Points: {n_train}")
-            if k_param != 'N/A':
-                print(f"K Parameter: {k_param}")
+            if not csv:
+                print(f"Epoch: {epoch}")
+                print(f"Num Training Points: {n_train}")
+                if k_param != 'N/A':
+                    print(f"K Parameter: {k_param}")
 
             # Create model and load weights
             _, d = np.shape(xs_train)
@@ -111,11 +121,13 @@ def analyze_model_performance(model_save_dir="model_weights"):
                 train_regret = hard_regret(xs_train, ctrl_train, trt_train, train_control_pred, train_treated_pred)
                 
                 # Print results
-                print(f"Training Loss: {train_loss:.6f}")
-                print(f"Train Regret: {train_regret:.6f}")
-                print(f"Test Regret: {test_regret:.6f}")
-                print(f"Train MSE: {train_mse:.6f}")
-                print(f"{train_loss:.6f}, {train_regret:.6f}, {test_regret:.6f}, {train_mse:.6f}")
+                if csv:
+                    print(f"{epoch},{train_loss:.6f}, {train_regret:.6f}, {test_regret:.6f}, {train_mse:.6f}")
+                else:
+                    print(f"Training Loss: {train_loss:.6f}")
+                    print(f"Train Regret: {train_regret:.6f}")
+                    print(f"Test Regret: {test_regret:.6f}")
+                    print(f"Train MSE: {train_mse:.6f}")
 
                 # print(f"Training Pred Mean: {np.mean(train_pred):.6f}")
                 # print(f"Training Pred Std:  {np.std(train_pred):.6f}")
@@ -125,9 +137,20 @@ def analyze_model_performance(model_save_dir="model_weights"):
 
 def main():
     """Main function."""
-    print("🔍 ESR Loss - Simple Model Analysis")
-    print("=" * 50)
-    analyze_model_performance("XP6")
+    parser = argparse.ArgumentParser(description='Analyze saved model weights and print performance metrics')
+    parser.add_argument('directory', nargs='?', default='model_weights', 
+                       help='Directory containing model files (default: model_weights)')
+    parser.add_argument('--csv', '-c', action='store_true', 
+                       help='Enable CSV output')
+    
+    args = parser.parse_args()
+    
+    if not csv:
+        print("🔍 ESR Loss - Simple Model Analysis")
+        print("=" * 50)
+        print(f"Analyzing models in directory: {args.directory}")
+    
+    analyze_model_performance(args.directory, args.csv)
 
 if __name__ == "__main__":
     main()
