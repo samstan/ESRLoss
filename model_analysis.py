@@ -79,7 +79,7 @@ def plot_treatment_effects(checkpoint_path, data_path='informs.npz', n_train=Non
         # Treatment effect = treated - control
         pred_treatment_effects = treated_pred - control_pred
 
-    treatment_effects = pred_treatment_effects
+    treatment_effects = true_treatment_effects
 
     # Create the plot
     plt.figure(figsize=figsize)

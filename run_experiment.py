@@ -1,10 +1,30 @@
 #!/usr/bin/env python3
 import numpy as np
+import torch
 from learners_reg import reg_learner
 
 MAX_TRAIN = int(1e5) # max amount of training data
 MAX_TEST = int(1e5) # max amount of test data
-N_FEATURES = 2
+N_FEATURES = 50
+FRAC_TREATED = 0.8 # fraction treated in training data
+
+def logistic(x):
+    """
+    Vectorized logistic function: 1 / (1 + exp(-x))
+    
+    Args:
+        x: Input tensor or numpy array
+        
+    Returns:
+        Logistic function output with same shape as input
+    """
+    # Handle both torch tensors and numpy arrays
+    if isinstance(x, torch.Tensor):
+        return 1.0 / (1.0 + torch.exp(-x))
+    else:
+        return 1.0 / (1.0 + np.exp(-x))
+
+
 
 def reward(xs, is_treated, a=0.1):
     # xs is a 2-d numpy array with shape (n, d), where n is the number of samples and d is the number of features
@@ -19,7 +39,7 @@ def reward(xs, is_treated, a=0.1):
     for i in range(n):
         x = xs[i,:]
         sum_x = np.sum(x)
-        reward[i] = np.cos(1+a*sum_x) + np.sin(a*sum_x) * is_treated[i]
+        reward[i] = 50*sum_x + logistic(sum_x) * is_treated[i]
 
     return reward
 
@@ -32,10 +52,9 @@ def generate_data():
     xs_test = np.random.randn(MAX_TEST, N_FEATURES)
 
     # Training data treatments and outcomes
-    frac_treated = 0.5 # fraction treated in training data
     ctrl_train = reward(xs_train, np.zeros(MAX_TRAIN)) # not used
     trt_train = reward(xs_train, np.ones(MAX_TRAIN)) # not used
-    treats_train = np.random.binomial(1, frac_treated, MAX_TRAIN)
+    treats_train = np.random.binomial(1, FRAC_TREATED, MAX_TRAIN)
     outcomes_train = reward(xs_train, treats_train)
     
     # Test data outcomes for control and treatment
@@ -109,7 +128,7 @@ def run_experiment(n_train = 10, n_test = MAX_TEST, n_epochs = 2, L = 0, model_s
     print(f"model weights saved to '{model_save_dir}/' directory")
     print()
 
-def run_experiment_avg(n_train=10, n_test=MAX_TEST, n_epochs=2, l=0, num_replications=5):
+def run_experiment_avg(n_train=10, n_test=MAX_TEST, n_epochs=2, L=0, num_replications=5):
     """
     Run experiment with multiple replications and compute mean and standard deviation of regret.
     
@@ -129,7 +148,7 @@ def run_experiment_avg(n_train=10, n_test=MAX_TEST, n_epochs=2, l=0, num_replica
     # load data saved to a file by generate_data
     try:
         data = np.load('informs.npz')
-        print(f"data loaded from 'informs.npz'")
+        #print(f"data loaded from 'informs.npz'")
     except FileNotFoundError:
         print("data file not found. running generate_data() first...")
         data = generate_data()
@@ -139,9 +158,9 @@ def run_experiment_avg(n_train=10, n_test=MAX_TEST, n_epochs=2, l=0, num_replica
     ctrl_test = data['ctrl_test'][:n_test]
     trt_test = data['trt_test'][:n_test]
     
-    print(f"Running {num_replications} replications with {n_train} training samples and {n_test} test samples")
-    print(f"L (MSE weight): {l}, Epochs: {n_epochs}")
     print("=" * 60)
+    print(f"L (MSE weight): {L}, Training Samples: {n_train}, Epochs: {n_epochs}, Replications: {num_replications}")
+    #print("=" * 60)
     
     regrets = []
     
@@ -161,7 +180,7 @@ def run_experiment_avg(n_train=10, n_test=MAX_TEST, n_epochs=2, l=0, num_replica
             xs_test, ctrl_test, trt_test, 
             ctrl_train, trt_train, 
             k=25, 
-            L=l,
+            L=L,
             n_epochs=n_epochs,
             save_weights=False
         )
@@ -173,12 +192,12 @@ def run_experiment_avg(n_train=10, n_test=MAX_TEST, n_epochs=2, l=0, num_replica
     mean_regret = np.mean(regrets)
     std_regret = np.std(regrets, ddof=1)  # Sample standard deviation
     
-    print("=" * 60)
-    print(f"Results after {num_replications} replications:")
-    print(f"Mean regret: {mean_regret:.6f}")
-    print(f"Standard deviation: {std_regret:.6f}")
+    #print("=" * 60)
+    #print(f"Results after {num_replications} replications:")
+    # print(f"Mean regret: {mean_regret:.6f}")
+    # print(f"Standard deviation: {std_regret:.6f}")
     # print(f"Individual regrets: {[f'{r:.6f}' for r in regrets]}")
-    print()
+    # print()
     
     return mean_regret, std_regret
  
@@ -211,27 +230,33 @@ def run_experiment1():
 
 
 def run_experiment2():
-    print('L=0')
-    mean_regret, std_regret = run_experiment_avg(n_train=10, n_epochs=100, l=0, num_replications=100)
+
+    n_train = 100
+    num_reps = 500
+    n_epochs = 500
+
+    mean_regret, std_regret = run_experiment_avg(n_train=n_train, n_epochs=n_epochs, L=0, num_replications=num_reps)
     print(f"Final result: {mean_regret:.6f} ± {std_regret:.6f}")
 
-    print('\nL=0.025')
-    mean_regret, std_regret = run_experiment_avg(n_train=10, n_epochs=100, l=0.025, num_replications=100)
+    mean_regret, std_regret = run_experiment_avg(n_train=n_train, n_epochs=n_epochs, L=0.2, num_replications=num_reps)
     print(f"Final result: {mean_regret:.6f} ± {std_regret:.6f}")
 
-    print('\nL=0.050')
-    mean_regret, std_regret = run_experiment_avg(n_train=10, n_epochs=100, l=0.05, num_replications=100)
+    mean_regret, std_regret = run_experiment_avg(n_train=n_train, n_epochs=n_epochs, L=0.4, num_replications=num_reps)
     print(f"Final result: {mean_regret:.6f} ± {std_regret:.6f}")
 
-    print('\nL=1.00')
-    mean_regret, std_regret = run_experiment_avg(n_train=10, n_epochs=100, l=1, num_replications=100)
+    mean_regret, std_regret = run_experiment_avg(n_train=n_train, n_epochs=n_epochs, L=0.6, num_replications=num_reps)
+    print(f"Final result: {mean_regret:.6f} ± {std_regret:.6f}")
+
+    mean_regret, std_regret = run_experiment_avg(n_train=n_train, n_epochs=n_epochs, L=0.8, num_replications=num_reps)
+    print(f"Final result: {mean_regret:.6f} ± {std_regret:.6f}")
+
+    mean_regret, std_regret = run_experiment_avg(n_train=n_train, n_epochs=n_epochs, L=1.0, num_replications=num_reps)
     print(f"Final result: {mean_regret:.6f} ± {std_regret:.6f}")
 
 
 if __name__ == "__main__":
-    run_experiment(n_train=100,n_epochs=100,L=0,model_save_dir="v2-XP1")
-
-    #run_experiment(n_train=1000,n_epochs=100,L=0,model_save_dir="XP6")
+    # run_experiment(n_train=100,n_epochs=100,L=0,model_save_dir="v2-XP1")
+    run_experiment2()
 
 
 

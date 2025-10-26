@@ -166,7 +166,7 @@ def reg_learner(xs_train, treats_train, outcomes_train, xs_test, ctrl_test, trt_
         return loss_all
 
     for epoch in range(n_epochs):
-        print(f'Epoch={epoch}')
+        # print(f'Epoch={epoch}')
         train_loss[epoch] = train(X, y, closest, L = L)
 
         # Benchmark algorithm
