@@ -199,7 +199,7 @@ def run_experiment_avg(n_train=10, n_test=MAX_TEST, n_epochs=2, L=0, num_replica
     # print(f"Individual regrets: {[f'{r:.6f}' for r in regrets]}")
     # print()
     
-    return mean_regret, std_regret
+    return mean_regret, std_regret/np.sqrt(num_replications)
  
     
 
